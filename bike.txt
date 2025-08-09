@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Bike Infotainment System - iDrive 8 Style</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.comcom/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
+    <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
+    <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+    <style>
+        :root {
+            --bmw-gold: #c9a473;
+            --bmw-blue: #4d90fe;
+            --bmw-dark: #1a1a1a;
+            --bmw-light-gray: #b0b0b0;
+            --bmw-med-gray: #333333;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #000;
+            color: #f0f0f0;
+            overflow: hidden;
+        }
+        .infotainment-container {
+            width: 100vw;
+            height: 100vh;
+            background: var(--bmw-dark);
+            display: flex;
+            flex-direction: column;
+            max-width: 800px;
+            max-height: 480px;
+            margin: auto;
+            border-radius: 1rem;
+            box-shadow: 0 0 30px rgba(0,0,0,0.5);
+            position: relative;
+        }
+        .status-bar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem 1.5rem;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.4), transparent);
+            z-index: 1000;
+        }
+        .content-area {
+            flex-grow: 1;
+            position: relative;
+            height: 100%;
+            overflow: hidden;
+        }
+        .screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease-in-out;
+            background-color: var(--bmw-dark);
+        }
+        .screen.active {
+            opacity: 1;
+            visibility: visible;
+        }
+        .home-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            grid-template-rows: 1fr 1fr;
+            gap: 1rem;
+            padding: 1rem;
+            padding-top: 4rem; /* For status bar */
+            height: 100%;
+        }
+        .widget-tile {
+            background-color: rgba(40, 40, 40, 0.7);
+            border-radius: 1rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 1rem;
+            overflow: hidden;
+            position: relative;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .widget-tile:hover {
+            transform: scale(1.02);
+            box-shadow: 0 0 15px rgba(0,0,0,0.5);
+        }
+        #nav-tile { grid-column: 1 / 2; grid-row: 1 / 3; padding: 0; }
+        #music-tile { grid-column: 2 / 3; grid-row: 1 / 2; display: flex; flex-direction: column; justify-content: center; }
+        #sport-tile { grid-column: 2 / 3; grid-row: 2 / 3; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+        #gemini-tile { display: none; } /* Can be added back if needed */
+
+        .dock {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 2rem;
+            padding: 0.75rem 0;
+            background-color: rgba(0,0,0,0.3);
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            flex-shrink: 0;
+        }
+        .dock-item { background: none; border: none; color: var(--bmw-light-gray); cursor: pointer; transition: color 0.2s, transform 0.2s; }
+        .dock-item:hover { color: white; transform: scale(1.1); }
+        .dock-item.active { color: var(--bmw-gold); }
+        
+        /* Full Screen App Styles */
+        .app-screen { padding: 1.5rem; padding-top: 4rem; }
+        #nav-screen { padding: 0; }
+        #map { height: 100%; width: 100%; background-color: #222; }
+        .leaflet-routing-container { display: none; }
+        .nav-search-bar { position: absolute; top: 4rem; left: 50%; transform: translateX(-50%); z-index: 10; width: 60%; }
+        .nav-search-bar input { width: 100%; padding: 0.75rem 1rem; border-radius: 99px; border: 1px solid var(--bmw-med-gray); background-color: rgba(26, 26, 26, 0.8); backdrop-filter: blur(5px); color: white; font-size: 1rem; }
+
+        #sport-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1rem; }
+        .speedo-container { text-align: center; }
+        .speedo-container .speed { font-size: 8rem; font-weight: 300; line-height: 1; color: var(--bmw-gold); }
+        .speedo-container .unit { font-size: 2rem; color: var(--bmw-light-gray); }
+        .sport-trip-data { display: flex; gap: 4rem; margin-top: 1rem;}
+        .sport-trip-data .item { text-align: center; }
+        .sport-trip-data .item .value { font-size: 2.5rem; font-weight: 500; }
+        .sport-trip-data .item .label { font-size: 1rem; color: var(--bmw-light-gray); }
+
+        #music-screen { display: flex; align-items: center; justify-content: center; gap: 2rem; }
+        .album-art-large { width: 250px; height: 250px; border-radius: 0.5rem; flex-shrink: 0; }
+
+        #gemini-screen { padding: 0; display: flex; flex-direction: column; }
+        .chat-container { flex-grow: 1; overflow-y: auto; padding: 4.5rem 1rem 1rem 1rem; }
+        .chat-message { max-width: 80%; padding: 0.75rem 1.25rem; border-radius: 1.25rem; margin-bottom: 0.75rem; line-height: 1.5; }
+        .chat-message.user { background-color: var(--bmw-blue); align-self: flex-end; }
+        .chat-message.gemini { background-color: var(--bmw-med-gray); align-self: flex-start; }
+        .chat-input-form { display: flex; padding: 1rem; border-top: 1px solid var(--bmw-med-gray); }
+    </style>
+</head>
+<body class="flex items-center justify-center">
+
+    <div id="infotainment-container" class="infotainment-container">
+        <div class="status-bar">
+            <div id="timeDisplay" class="text-lg font-semibold">17:11</div>
+            <div id="gpsStatus" class="text-sm text-yellow-400 font-semibold"></div>
+            <div class="flex items-center gap-4">
+                <div id="temperature" class="text-lg font-semibold">22°C</div>
+                <div id="weatherIcon" class="text-2xl">☀️</div>
+            </div>
+        </div>
+
+        <div class="content-area">
+            <!-- Home Screen -->
+            <div id="home-screen" class="screen active">
+                <div class="home-grid">
+                    <div id="nav-tile" class="widget-tile">
+                        <div id="map-preview"></div>
+                    </div>
+                    <div id="music-tile" class="widget-tile">
+                        <p class="text-sm text-gray-400 mb-2">NOW PLAYING</p>
+                        <h3 class="text-lg font-semibold">Sunset Rider</h3>
+                        <p class="text-gray-300">Synthwave Dreams</p>
+                    </div>
+                    <div id="sport-tile" class="widget-tile">
+                         <p class="text-sm text-gray-400 mb-2">CURRENT SPEED</p>
+                         <div>
+                            <span id="speed-tile" class="text-5xl font-light text-bmw-gold">0</span>
+                            <span id="speed-unit-tile" class="text-lg text-gray-400">km/h</span>
+                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Full-screen Apps -->
+            <div id="nav-screen" class="screen">
+                <div class="nav-search-bar">
+                    <form id="nav-search-form"><input type="text" id="nav-search-input" placeholder="Where to?"></form>
+                </div>
+                <div id="map"></div>
+            </div>
+            <div id="music-screen" class="screen app-screen">
+                <img src="https://placehold.co/500x500/c9a473/1a1a1a?text=Music" class="album-art-large">
+                <div>
+                    <h2 class="text-3xl font-semibold">Sunset Rider</h2>
+                    <p class="text-xl text-gray-400">Synthwave Dreams</p>
+                    <div class="flex gap-6 mt-6">
+                        <button class="text-gray-300 hover:text-white"><svg class="w-8 h-8" fill="currentColor" viewBox="0 0 20 20"><path d="M8.445 14.832A1 1 0 0010 14.208V5.792a1 1 0 00-1.555-.832L4.12 8.128a1 1 0 000 1.664l4.325 3.04z"/></svg></button>
+                        <button class="text-white text-bmw-gold"><svg class="w-10 h-10" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8.002v3.996a1 1 0 001.555.832l3.198-2a1 1 0 000-1.664l-3.198-2z" clip-rule="evenodd" /></svg></button>
+                        <button class="text-gray-300 hover:text-white"><svg class="w-8 h-8" fill="currentColor" viewBox="0 0 20 20"><path d="M11.555 5.168A1 1 0 0010 5.792v8.416a1 1 0 001.555.832l4.325-3.04a1 1 0 000-1.664l-4.325-3.04z"/></svg></button>
+                    </div>
+                </div>
+            </div>
+            <div id="sport-screen" class="screen app-screen">
+                <div class="speedo-container">
+                    <span id="speed" class="speed">0</span>
+                    <span id="speed-unit" class="unit">km/h</span>
+                </div>
+                <div class="sport-trip-data">
+                    <div class="item"><p id="distance" class="value">0.0</p><p class="label">DISTANCE (KM)</p></div>
+                    <div class="item"><p id="time" class="value">00:00</p><p class="label">TIME</p></div>
+                    <div class="item"><p id="avgSpeed" class="value">0.0</p><p class="label">AVG. SPEED</p></div>
+                </div>
+            </div>
+            <div id="gemini-screen" class="screen">
+                <div id="chat-container" class="chat-container"></div>
+                <form id="chat-form" class="chat-input-form">
+                    <input type="text" id="chat-input" placeholder="Ask Gemini..." class="bg-gray-800 border-none rounded-full px-4 py-2 w-full text-white">
+                    <button type="submit" class="ml-2 p-2 bg-blue-600 rounded-full"><svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20"><path d="M3.105 3.105a1 1 0 011.414 0L10 8.586l5.48-5.481a1 1 0 111.415 1.414L11.414 10l5.481 5.48a1 1 0 11-1.414 1.415L10 11.414l-5.48 5.481a1 1 0 11-1.415-1.414L8.586 10 3.105 4.52a1 1 0 010-1.414z"/></svg></button>
+                </form>
+            </div>
+        </div>
+
+        <div class="dock">
+            <button class="dock-item active" data-screen="home-screen"><svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg></button>
+            <button class="dock-item" data-screen="nav-screen"><svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l5.447 2.724A1 1 0 0021 16.382V5.618a1 1 0 00-1.447-.894L15 7m-6 10v-5.5m0 0l6-3m-6 3l-6-3" /></svg></button>
+            <button class="dock-item" data-screen="music-screen"><svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z" /></svg></button>
+            <button class="dock-item" data-screen="sport-screen"><svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg></button>
+            <button class="dock-item" data-screen="gemini-screen"><svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" /></svg></button>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- Element References ---
+            const speedElement = document.getElementById('speed');
+            const speedUnitElement = document.getElementById('speed-unit');
+            const speedTileElement = document.getElementById('speed-tile');
+            const speedUnitTileElement = document.getElementById('speed-unit-tile');
+            const distanceElement = document.getElementById('distance');
+            const timeElement = document.getElementById('time');
+            const avgSpeedElement = document.getElementById('avgSpeed');
+            const timeDisplayElement = document.getElementById('timeDisplay');
+            const temperatureElement = document.getElementById('temperature');
+            const gpsStatusElement = document.getElementById('gpsStatus');
+            const dockItems = document.querySelectorAll('.dock-item');
+            const screens = document.querySelectorAll('.screen');
+            const widgetTiles = document.querySelectorAll('.widget-tile');
+            const navSearchForm = document.getElementById('nav-search-form');
+            const navSearchInput = document.getElementById('nav-search-input');
+            const chatForm = document.getElementById('chat-form');
+            const chatInput = document.getElementById('chat-input');
+            const chatContainer = document.getElementById('chat-container');
+
+            // --- State & Settings ---
+            let speed = 0, distance = 0, elapsedTime = 0, avgSpeed = 0;
+            let startTime = Date.now();
+            let lastSpeedUpdateTime = Date.now();
+            let simulationInterval = null;
+            let chatHistory = [];
+            let routingControl = null;
+            let userLocation = null;
+            let settings = { units: 'metric', timeFormat: '24h' };
+
+            // --- Initialization ---
+            updateClock();
+            fetchWeather();
+            
+            // --- UI Logic ---
+            const screenMap = new Map();
+            screens.forEach(screen => screenMap.set(screen.id, screen));
+
+            function showScreen(screenId) {
+                screens.forEach(s => s.classList.remove('active'));
+                screenMap.get(screenId)?.classList.add('active');
+                
+                dockItems.forEach(item => {
+                    item.classList.toggle('active', item.dataset.screen === screenId);
+                });
+
+                if (screenId === 'nav-screen') {
+                    setTimeout(() => map.invalidateSize(), 10);
+                }
+            }
+            
+            dockItems.forEach(item => {
+                item.addEventListener('click', () => showScreen(item.dataset.screen));
+            });
+
+            widgetTiles.forEach(tile => {
+                tile.addEventListener('click', () => {
+                    const screenId = tile.id.replace('-tile', '-screen');
+                    showScreen(screenId);
+                });
+            });
+
+            // --- Gemini Chat Logic ---
+            chatForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const userInput = chatInput.value.trim();
+                if (!userInput) return;
+                addMessageToChat(userInput, 'user');
+                chatInput.value = '';
+                addMessageToChat('...', 'gemini', true);
+                try {
+                    const response = await getGeminiResponse(userInput);
+                    document.getElementById('thinking')?.remove();
+                    addMessageToChat(response, 'gemini');
+                } catch (error) {
+                    document.getElementById('thinking')?.remove();
+                    addMessageToChat('Connection error.', 'gemini');
+                }
+            });
+            function addMessageToChat(text, sender, isLoading = false) {
+                const messageElement = document.createElement('div');
+                messageElement.className = `chat-message ${sender}`;
+                messageElement.textContent = text;
+                if (isLoading) messageElement.id = 'thinking';
+                chatContainer.appendChild(messageElement);
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+            }
+            async function getGeminiResponse(prompt) {
+                chatHistory.push({ role: "user", parts: [{ text: prompt }] });
+                const payload = { contents: chatHistory };
+                const apiKey = "";
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+                const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                if (!response.ok) throw new Error(`API request failed`);
+                const result = await response.json();
+                const geminiText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (geminiText) {
+                    chatHistory.push({ role: "model", parts: [{ text: geminiText }] });
+                    return geminiText;
+                }
+                return "Sorry, I couldn't get a response.";
+            }
+
+            // --- Map & Navigation ---
+            const map = L.map('map', { zoomControl: false, attributionControl: false }).setView([51.505, -0.09], 13);
+            const mapPreview = L.map('map-preview', { zoomControl: false, attributionControl: false, dragging: false, scrollWheelZoom: false }).setView([51.505, -0.09], 11);
+            
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png', { maxZoom: 20, subdomains: 'abcd' }).addTo(map);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png', { maxZoom: 20, subdomains: 'abcd' }).addTo(mapPreview);
+            
+            let userMarker, userMarkerPreview;
+            
+            navSearchForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const destination = navSearchInput.value;
+                if (destination && userLocation) geocodeAndRoute(destination);
+            });
+
+            function geocodeAndRoute(destination) {
+                const geocoder = L.Control.Geocoder.nominatim();
+                geocoder.geocode(destination, (results) => {
+                    if (results && results.length > 0) {
+                        const destLatLng = results[0].center;
+                        if (routingControl) map.removeControl(routingControl);
+                        routingControl = L.Routing.control({
+                            waypoints: [userLocation, destLatLng],
+                            createMarker: () => null,
+                            lineOptions: { styles: [{color: getComputedStyle(document.documentElement).getPropertyValue('--bmw-blue').trim(), opacity: 0.8, weight: 6}] },
+                            router: L.Routing.osrmv1({ serviceUrl: `https://router.project-osrm.org/route/v1`, profile: 'bike' })
+                        }).addTo(map);
+                    } else { alert('Destination not found.'); }
+                });
+            }
+
+            // --- Geolocation & Simulation ---
+            function updateUserLocation(lat, lon) {
+                userLocation = L.latLng(lat, lon);
+                const iconHtml = `<div style="background-color: ${getComputedStyle(document.documentElement).getPropertyValue('--bmw-blue').trim()}; width: 20px; height: 20px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 10px black;"></div>`;
+                const icon = L.divIcon({ className: 'bmw-location-marker', html: iconHtml, iconSize: [20, 20], iconAnchor: [10, 10] });
+                
+                if (!userMarker) {
+                    userMarker = L.marker([lat, lon], {icon: icon}).addTo(map);
+                    userMarkerPreview = L.marker([lat, lon], {icon: icon}).addTo(mapPreview);
+                } else {
+                    userMarker.setLatLng([lat, lon]);
+                    userMarkerPreview.setLatLng([lat, lon]);
+                }
+                
+                if (!routingControl) {
+                    map.setView([lat, lon], 15);
+                    mapPreview.setView([lat, lon], 11);
+                }
+            }
+            if ('geolocation' in navigator) {
+                navigator.geolocation.watchPosition((position) => {
+                    gpsStatusElement.textContent = '';
+                    if (simulationInterval) { clearInterval(simulationInterval); simulationInterval = null; }
+                    const { latitude, longitude, speed: geoSpeed } = position.coords;
+                    updateUserLocation(latitude, longitude);
+                    speed = geoSpeed !== null ? (geoSpeed * 3.6) : 0;
+                    updateDataDisplays();
+                }, () => {
+                    gpsStatusElement.textContent = 'GPS Unavailable';
+                    if (!simulationInterval) simulateMovement();
+                }, { enableHighAccuracy: true });
+            } else {
+                simulateMovement();
+            }
+            function simulateMovement() {
+                if(simulationInterval) return;
+                updateUserLocation(49.3486, 7.5806);
+                simulationInterval = setInterval(() => {
+                    speed = Math.max(0, Math.min(60, speed + (Math.random() - 0.45) * 4));
+                    updateDataDisplays();
+                }, 2000);
+            }
+
+            // --- UI Update Functions ---
+            function updateDataDisplays() {
+                const isImperial = settings.units === 'imperial';
+                const speedFactor = isImperial ? 0.621371 : 1;
+                const distFactor = isImperial ? 0.621371 : 1;
+                const speedUnitText = isImperial ? 'mph' : 'km/h';
+                const distUnitText = isImperial ? 'MI' : 'KM';
+                
+                const currentSpeed = Math.floor(speed * speedFactor);
+                speedElement.textContent = currentSpeed;
+                speedTileElement.textContent = currentSpeed;
+                speedUnitElement.textContent = speedUnitText;
+                speedUnitTileElement.textContent = speedUnitText;
+
+                distance += (speed / 3600) * ((Date.now() - lastSpeedUpdateTime) / 1000);
+                lastSpeedUpdateTime = Date.now();
+                distanceElement.textContent = (distance * distFactor).toFixed(1);
+                distanceElement.nextElementSibling.textContent = `DISTANCE (${distUnitText})`;
+
+                elapsedTime = (Date.now() - startTime) / 1000;
+                const minutes = Math.floor((elapsedTime % 3600) / 60);
+                const seconds = Math.floor(elapsedTime % 60);
+                timeElement.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+                
+                const avgSpeedKm = elapsedTime > 0 ? (distance / (elapsedTime / 3600)) : 0;
+                avgSpeedElement.textContent = (avgSpeedKm * speedFactor).toFixed(1);
+                avgSpeedElement.nextElementSibling.textContent = `AVG. SPEED (${speedUnitText.toUpperCase()})`;
+            }
+            function updateClock() {
+                const now = new Date();
+                const options = { hour: '2-digit', minute: '2-digit', hour12: settings.timeFormat === '12h' };
+                timeDisplayElement.textContent = now.toLocaleTimeString('en-US', options);
+            }
+            function fetchWeather() {
+                fetch(`https://api.open-meteo.com/v1/forecast?latitude=49.3486&longitude=7.5806&current_weather=true`)
+                    .then(res => res.json()).then(data => {
+                        temperatureElement.textContent = `${Math.round(data.current_weather.temperature)}°C`;
+                    }).catch(console.error);
+            }
+
+            // --- Intervals ---
+            setInterval(updateClock, 1000);
+            setInterval(updateDataDisplays, 1000);
+            setInterval(fetchWeather, 600000);
+        });
+    </script>
+</body>
+</html>
