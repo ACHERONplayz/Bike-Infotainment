@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Bike Infotainment System - iDrive 8 Style</title>
+    <title>Bike Infotainment System - iDrive 7 Style</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -12,13 +12,14 @@
     <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
     <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
-            --bmw-gold: #c9a473;
-            --bmw-blue: #4d90fe;
-            --bmw-dark: #1a1a1a;
-            --bmw-light-gray: #b0b0b0;
-            --bmw-med-gray: #333333;
+            --id7-blue: #3b82f6;
+            --id7-red: #ef4444;
+            --id7-dark: #1a1a1a;
+            --id7-light-gray: #b0b0b0;
+            --id7-med-gray: #333333;
         }
         body {
             font-family: 'Inter', sans-serif;
@@ -29,7 +30,7 @@
         .infotainment-container {
             width: 100vw;
             height: 100vh;
-            background: var(--bmw-dark);
+            background: var(--id7-dark);
             display: flex;
             flex-direction: column;
             max-width: 800px;
@@ -51,6 +52,25 @@
             background: linear-gradient(to bottom, rgba(0,0,0,0.4), transparent);
             z-index: 1000;
         }
+        .main-view {
+            display: flex;
+            flex-grow: 1;
+            height: 100%;
+        }
+        .dock {
+            display: none; /* Hidden by default */
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            gap: 1.5rem;
+            padding: 0 1rem;
+            background-color: rgba(0,0,0,0.3);
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+            flex-shrink: 0;
+        }
+        .app-view-active .dock {
+            display: flex; /* Show dock when an app is active */
+        }
         .content-area {
             flex-grow: 1;
             position: relative;
@@ -65,54 +85,19 @@
             height: 100%;
             opacity: 0;
             visibility: hidden;
-            transition: opacity 0.3s ease-in-out;
-            background-color: var(--bmw-dark);
+            transform: scale(0.98);
+            transition: opacity 0.25s ease-in-out, transform 0.25s ease-in-out, visibility 0.25s;
+            background-color: var(--id7-dark);
         }
         .screen.active {
             opacity: 1;
             visibility: visible;
+            transform: scale(1);
         }
-        .home-grid {
-            display: grid;
-            grid-template-columns: 2fr 1fr;
-            grid-template-rows: 1fr 1fr;
-            gap: 1rem;
-            padding: 1rem;
-            padding-top: 4rem; /* For status bar */
-            height: 100%;
-        }
-        .widget-tile {
-            background-color: rgba(40, 40, 40, 0.7);
-            border-radius: 1rem;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            padding: 1rem;
-            overflow: hidden;
-            position: relative;
-            cursor: pointer;
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-        }
-        .widget-tile:hover {
-            transform: scale(1.02);
-            box-shadow: 0 0 15px rgba(0,0,0,0.5);
-        }
-        #nav-tile { grid-column: 1 / 2; grid-row: 1 / 3; padding: 0; }
-        #music-tile { grid-column: 2 / 3; grid-row: 1 / 2; display: flex; flex-direction: column; justify-content: center; }
-        #sport-tile { grid-column: 2 / 3; grid-row: 2 / 3; display: flex; flex-direction: column; justify-content: center; align-items: center; }
-        #gemini-tile { display: none; } /* Can be added back if needed */
-
-        .dock {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 2rem;
-            padding: 0.75rem 0;
-            background-color: rgba(0,0,0,0.3);
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-            flex-shrink: 0;
-        }
-        .dock-item { background: none; border: none; color: var(--bmw-light-gray); cursor: pointer; transition: color 0.2s, transform 0.2s; }
+        
+        .dock-item { background: none; border: none; color: var(--id7-light-gray); cursor: pointer; transition: color 0.2s, transform 0.2s; }
         .dock-item:hover { color: white; transform: scale(1.1); }
-        .dock-item.active { color: var(--bmw-gold); }
+        .dock-item.active { color: var(--id7-blue); }
         
         /* Full Screen App Styles */
         .app-screen { padding: 1.5rem; padding-top: 4rem; }
@@ -120,220 +105,282 @@
         #map { height: 100%; width: 100%; background-color: #222; }
         .leaflet-routing-container { display: none; }
         .nav-search-bar { position: absolute; top: 4rem; left: 50%; transform: translateX(-50%); z-index: 10; width: 60%; }
-        .nav-search-bar input { width: 100%; padding: 0.75rem 1rem; border-radius: 99px; border: 1px solid var(--bmw-med-gray); background-color: rgba(26, 26, 26, 0.8); backdrop-filter: blur(5px); color: white; font-size: 1rem; }
+        .nav-search-bar input { width: 100%; padding: 0.75rem 1rem; border-radius: 99px; border: 1px solid var(--id7-med-gray); background-color: rgba(26, 26, 26, 0.8); backdrop-filter: blur(5px); color: white; font-size: 1rem; }
 
         #sport-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1rem; }
         .speedo-container { text-align: center; }
-        .speedo-container .speed { font-size: 8rem; font-weight: 300; line-height: 1; color: var(--bmw-gold); }
-        .speedo-container .unit { font-size: 2rem; color: var(--bmw-light-gray); }
+        .speedo-container .speed { font-size: 8rem; font-weight: 300; line-height: 1; color: var(--id7-red); }
+        .speedo-container .unit { font-size: 2rem; color: var(--id7-light-gray); }
         .sport-trip-data { display: flex; gap: 4rem; margin-top: 1rem;}
         .sport-trip-data .item { text-align: center; }
         .sport-trip-data .item .value { font-size: 2.5rem; font-weight: 500; }
-        .sport-trip-data .item .label { font-size: 1rem; color: var(--bmw-light-gray); }
+        .sport-trip-data .item .label { font-size: 1rem; color: var(--id7-light-gray); }
 
-        #music-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2rem; }
+        #music-screen { display: flex; align-items: center; justify-content: center; gap: 2rem; }
         .album-art-large { width: 250px; height: 250px; border-radius: 0.5rem; flex-shrink: 0; }
-        #connect-btn { background-color: var(--bmw-blue); color: white; padding: 0.5rem 1rem; border-radius: 99px; border: none; cursor: pointer; position: absolute; top: 4rem; right: 1.5rem; }
+        #connect-btn { background-color: var(--id7-blue); color: white; padding: 0.5rem 1rem; border-radius: 99px; border: none; cursor: pointer; position: absolute; top: 4rem; right: 1.5rem; }
 
         #gemini-screen { padding: 0; display: flex; flex-direction: column; }
         .chat-container { flex-grow: 1; overflow-y: auto; padding: 4.5rem 1rem 1rem 1rem; }
         .chat-message { max-width: 80%; padding: 0.75rem 1.25rem; border-radius: 1.25rem; margin-bottom: 0.75rem; line-height: 1.5; }
-        .chat-message.user { background-color: var(--bmw-blue); align-self: flex-end; }
-        .chat-message.gemini { background-color: var(--bmw-med-gray); align-self: flex-start; }
-        .chat-input-form { display: flex; padding: 1rem; border-top: 1px solid var(--bmw-med-gray); }
+        .chat-message.user { background-color: var(--id7-blue); align-self: flex-end; }
+        .chat-message.gemini { background-color: var(--id7-med-gray); align-self: flex-start; }
+        .chat-input-form { display: flex; padding: 1rem; border-top: 1px solid var(--id7-med-gray); }
+        
+        #settings-screen { padding: 1.5rem; padding-top: 4.5rem; display: flex; justify-content: center; }
+        .settings-container { width: 100%; max-width: 400px; }
+        .settings-item { display: flex; justify-content: space-between; align-items: center; padding: 1rem; background-color: var(--id7-med-gray); border-radius: 0.5rem; margin-bottom: 1rem; }
+        .settings-item label { font-size: 1.1rem; font-weight: 500; }
+        .settings-item select { background-color: #444; border: 1px solid #555; border-radius: 0.25rem; padding: 0.25rem 0.5rem; color: white; }
+
+        #menu-screen { padding-top: 4rem; }
+        .menu-grid { display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(2, 1fr); gap: 1rem; height: 100%; padding: 1rem; }
+        .menu-item { background-color: var(--id7-med-gray); border-radius: 0.75rem; padding: 1rem; cursor: pointer; transition: background-color 0.2s; display: flex; flex-direction: column; justify-content: space-between; }
+        .menu-item:hover { background-color: #444; }
+        .menu-item .icon { margin-bottom: 0.5rem; }
+        .menu-item h3 { font-size: 1.2rem; font-weight: 600; }
+        .menu-item p { font-size: 0.9rem; color: var(--id7-light-gray); }
+
+        #weather-screen { display: grid; grid-template-columns: 2fr 3fr; grid-template-rows: 1fr 1fr; gap: 1.5rem; padding: 4rem 1.5rem 1.5rem; }
+        #weather-map-container { grid-column: 1 / 2; grid-row: 1 / 3; border-radius: 0.75rem; overflow: hidden; background-color: var(--id7-med-gray); }
+        #weather-map { height: 100%; width: 100%; }
+        .current-weather-details { grid-column: 2 / 3; grid-row: 1 / 2; background-color: var(--id7-med-gray); border-radius: 0.75rem; padding: 1rem; display: flex; flex-direction: column; justify-content: space-around; }
+        .weather-forecast { grid-column: 2 / 3; grid-row: 2 / 3; background-color: var(--id7-med-gray); border-radius: 0.75rem; padding: 1rem; }
+
+        #startup-screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: var(--id7-dark); z-index: 9999;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            transition: opacity 0.5s ease-out;
+        }
+        #startup-screen.hidden { opacity: 0; pointer-events: none; }
     </style>
 </head>
 <body class="flex items-center justify-center">
 
     <div id="infotainment-container" class="infotainment-container">
+        <div id="startup-screen">
+            <svg width="80" height="80" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="50" cy="50" r="48" stroke="white" stroke-width="4"/>
+                <path d="M25 50H75" stroke="white" stroke-width="4"/>
+                <path d="M50 25V75" stroke="white" stroke-width="4"/>
+            </svg>
+            <h2 class="text-2xl font-light mt-4 tracking-wider">ConnectedRide</h2>
+        </div>
+
         <div class="status-bar">
-            <div id="timeDisplay" class="text-lg font-semibold">17:15</div>
+            <div id="timeDisplay" class="text-lg font-semibold">17:18</div>
             <div id="gpsStatus" class="text-sm text-yellow-400 font-semibold"></div>
             <div class="flex items-center gap-4">
                 <div id="temperature" class="text-lg font-semibold">22°C</div>
-                <div id="weatherIcon" class="text-2xl">☀️</div>
             </div>
         </div>
 
-        <div class="content-area">
-            <!-- Home Screen -->
-            <div id="home-screen" class="screen active">
-                <div class="home-grid">
-                    <div id="nav-tile" class="widget-tile">
-                        <div id="map-preview"></div>
-                    </div>
-                    <div id="music-tile" class="widget-tile">
-                        <p class="text-sm text-gray-400 mb-2">NOW PLAYING</p>
-                        <h3 id="music-tile-title" class="text-lg font-semibold">Not Connected</h3>
-                        <p id="music-tile-artist" class="text-gray-300">Tap to connect</p>
-                    </div>
-                    <div id="sport-tile" class="widget-tile">
-                         <p class="text-sm text-gray-400 mb-2">CURRENT SPEED</p>
-                         <div>
-                            <span id="speed-tile" class="text-5xl font-light text-bmw-gold">0</span>
-                            <span id="speed-unit-tile" class="text-lg text-gray-400">km/h</span>
-                         </div>
+        <div class="main-view">
+            <div class="dock">
+                <button class="dock-item" data-screen="menu-screen"><svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg></button>
+                <button class="dock-item active" data-screen="nav-screen"><svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l5.447 2.724A1 1 0 0021 16.382V5.618a1 1 0 00-1.447-.894L15 7m-6 10v-5.5m0 0l6-3m-6 3l-6-3" /></svg></button>
+                <button class="dock-item" data-screen="music-screen"><svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z" /></svg></button>
+                <button class="dock-item" data-screen="sport-screen"><svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg></button>
+                <button class="dock-item" data-screen="gemini-screen"><svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" /></svg></button>
+                <button class="dock-item" data-screen="settings-screen"><svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg></button>
+            </div>
+            <div class="content-area">
+                <!-- Menu Screen -->
+                <div id="menu-screen" class="screen">
+                    <div class="menu-grid">
+                        <div class="menu-item" data-screen="nav-screen">
+                            <div><svg class="w-8 h-8 icon text-id7-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l5.447 2.724A1 1 0 0021 16.382V5.618a1 1 0 00-1.447-.894L15 7m-6 10v-5.5m0 0l6-3m-6 3l-6-3" /></svg></div>
+                            <div><h3>Navigation</h3><p>Find your destination</p></div>
+                        </div>
+                        <div class="menu-item" data-screen="music-screen">
+                            <div><svg class="w-8 h-8 icon text-id7-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z" /></svg></div>
+                            <div><h3>Media</h3><p id="music-menu-artist">Not Connected</p></div>
+                        </div>
+                        <div class="menu-item" data-screen="sport-screen">
+                            <div><svg class="w-8 h-8 icon text-id7-red" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg></div>
+                            <div><h3>Sport Displays</h3><p>View riding data</p></div>
+                        </div>
+                        <div class="menu-item" data-screen="weather-screen">
+                            <div><svg class="w-8 h-8 icon text-id7-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" /></svg></div>
+                            <div><h3>Weather</h3><p>View forecast</p></div>
+                        </div>
+                        <div class="menu-item" data-screen="gemini-screen">
+                             <div><svg class="w-8 h-8 icon text-id7-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" /></svg></div>
+                            <div><h3>Gemini Assistant</h3><p>Ask me anything</p></div>
+                        </div>
+                        <div class="menu-item" data-screen="settings-screen">
+                             <div><svg class="w-8 h-8 icon text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg></div>
+                            <div><h3>Settings</h3><p>Customize your system</p></div>
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            <!-- Full-screen Apps -->
-            <div id="nav-screen" class="screen">
-                <div class="nav-search-bar">
-                    <form id="nav-search-form"><input type="text" id="nav-search-input" placeholder="Where to?"></form>
+                <!-- Full-screen Apps -->
+                <div id="nav-screen" class="screen">
+                    <div class="nav-search-bar">
+                        <form id="nav-search-form"><input type="text" id="nav-search-input" placeholder="Where to?"></form>
+                    </div>
+                    <div id="map"></div>
                 </div>
-                <div id="map"></div>
-            </div>
-            <div id="music-screen" class="screen app-screen">
-                <button id="connect-btn">Connect to iPhone</button>
-                <img id="album-art-large" src="https://placehold.co/500x500/1a1a1a/333333?text=Music" class="album-art-large">
-                <div>
-                    <h2 id="music-track-title" class="text-3xl font-semibold">Not Connected</h2>
-                    <p id="music-track-artist" class="text-xl text-gray-400">Use the button to connect</p>
-                    <div class="flex gap-6 mt-6">
-                        <button id="prev-btn" class="text-gray-300 hover:text-white"><svg class="w-8 h-8" fill="currentColor" viewBox="0 0 20 20"><path d="M8.445 14.832A1 1 0 0010 14.208V5.792a1 1 0 00-1.555-.832L4.12 8.128a1 1 0 000 1.664l4.325 3.04z"/></svg></button>
-                        <button id="play-pause-btn" class="text-white text-bmw-gold"><svg class="w-10 h-10" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8.002v3.996a1 1 0 001.555.832l3.198-2a1 1 0 000-1.664l-3.198-2z" clip-rule="evenodd" /></svg></button>
-                        <button id="next-btn" class="text-gray-300 hover:text-white"><svg class="w-8 h-8" fill="currentColor" viewBox="0 0 20 20"><path d="M11.555 5.168A1 1 0 0010 5.792v8.416a1 1 0 001.555.832l4.325-3.04a1 1 0 000-1.664l-4.325-3.04z"/></svg></button>
+                <div id="music-screen" class="screen app-screen">
+                    <button id="connect-btn">Connect to iPhone</button>
+                    <img id="album-art-large" src="https://placehold.co/500x500/1a1a1a/333333?text=Music" class="album-art-large">
+                    <div>
+                        <h2 id="music-track-title" class="text-3xl font-semibold">Not Connected</h2>
+                        <p id="music-track-artist" class="text-xl text-gray-400">Use the button to connect</p>
+                        <div class="flex gap-6 mt-6">
+                            <button id="prev-btn" class="text-gray-300 hover:text-white"><svg class="w-8 h-8" fill="currentColor" viewBox="0 0 20 20"><path d="M8.445 14.832A1 1 0 0010 14.208V5.792a1 1 0 00-1.555-.832L4.12 8.128a1 1 0 000 1.664l4.325 3.04z"/></svg></button>
+                            <button id="play-pause-btn" class="text-white text-id7-blue"><svg class="w-10 h-10" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8.002v3.996a1 1 0 001.555.832l3.198-2a1 1 0 000-1.664l-3.198-2z" clip-rule="evenodd" /></svg></button>
+                            <button id="next-btn" class="text-gray-300 hover:text-white"><svg class="w-8 h-8" fill="currentColor" viewBox="0 0 20 20"><path d="M11.555 5.168A1 1 0 0010 5.792v8.416a1 1 0 001.555.832l4.325-3.04a1 1 0 000-1.664l-4.325-3.04z"/></svg></button>
+                        </div>
+                    </div>
+                </div>
+                <div id="sport-screen" class="screen app-screen">
+                    <div class="speedo-container">
+                        <span id="speed" class="speed">0</span>
+                        <span id="speed-unit" class="unit">km/h</span>
+                    </div>
+                    <div class="sport-trip-data">
+                        <div class="item"><p id="distance" class="value">0.0</p><p class="label">DISTANCE (KM)</p></div>
+                        <div class="item"><p id="time" class="value">00:00</p><p class="label">TIME</p></div>
+                        <div class="item"><p id="avgSpeed" class="value">0.0</p><p class="label">AVG. SPEED</p></div>
+                    </div>
+                </div>
+                <div id="weather-screen" class="screen">
+                    <div id="weather-map-container">
+                        <div id="weather-map"></div>
+                    </div>
+                    <div class="current-weather-details">
+                        <div>
+                            <p class="text-5xl font-bold" id="weather-temp">--°</p>
+                            <p class="text-lg text-gray-400" id="weather-desc">Loading...</p>
+                        </div>
+                        <div class="grid grid-cols-3 gap-4 text-center">
+                            <div><p class="font-bold text-lg" id="weather-feels-like">--°</p><p class="text-sm text-gray-400">Feels Like</p></div>
+                            <div><p class="font-bold text-lg" id="weather-wind">-- km/h</p><p class="text-sm text-gray-400">Wind</p></div>
+                            <div><p class="font-bold text-lg" id="weather-humidity">--%</p><p class="text-sm text-gray-400">Humidity</p></div>
+                        </div>
+                    </div>
+                    <div class="weather-forecast">
+                        <canvas id="forecast-chart"></canvas>
+                    </div>
+                </div>
+                <div id="gemini-screen" class="screen">
+                    <div id="chat-container" class="chat-container"></div>
+                    <form id="chat-form" class="chat-input-form">
+                        <input type="text" id="chat-input" placeholder="Ask Gemini..." class="bg-gray-800 border-none rounded-full px-4 py-2 w-full text-white">
+                        <button type="submit" class="ml-2 p-2 bg-blue-600 rounded-full"><svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20"><path d="M3.105 3.105a1 1 0 011.414 0L10 8.586l5.48-5.481a1 1 0 111.415 1.414L11.414 10l5.481 5.48a1 1 0 11-1.414 1.415L10 11.414l-5.48 5.481a1 1 0 11-1.415-1.414L8.586 10 3.105 4.52a1 1 0 010-1.414z"/></svg></button>
+                    </form>
+                </div>
+                <div id="settings-screen" class="screen">
+                    <div class="settings-container">
+                        <div class="settings-item">
+                            <label for="unit-select">Units</label>
+                            <select id="unit-select" name="units">
+                                <option value="metric">Metric (km, km/h)</option>
+                                <option value="imperial">Imperial (mi, mph)</option>
+                            </select>
+                        </div>
+                        <div class="settings-item">
+                            <label for="time-format-select">Time Format</label>
+                            <select id="time-format-select" name="time-format">
+                                <option value="24h">24-Hour</option>
+                                <option value="12h">12-Hour</option>
+                            </select>
+                        </div>
                     </div>
                 </div>
             </div>
-            <div id="sport-screen" class="screen app-screen">
-                <div class="speedo-container">
-                    <span id="speed" class="speed">0</span>
-                    <span id="speed-unit" class="unit">km/h</span>
-                </div>
-                <div class="sport-trip-data">
-                    <div class="item"><p id="distance" class="value">0.0</p><p class="label">DISTANCE (KM)</p></div>
-                    <div class="item"><p id="time" class="value">00:00</p><p class="label">TIME</p></div>
-                    <div class="item"><p id="avgSpeed" class="value">0.0</p><p class="label">AVG. SPEED</p></div>
-                </div>
-            </div>
-            <div id="gemini-screen" class="screen">
-                <div id="chat-container" class="chat-container"></div>
-                <form id="chat-form" class="chat-input-form">
-                    <input type="text" id="chat-input" placeholder="Ask Gemini..." class="bg-gray-800 border-none rounded-full px-4 py-2 w-full text-white">
-                    <button type="submit" class="ml-2 p-2 bg-blue-600 rounded-full"><svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20"><path d="M3.105 3.105a1 1 0 011.414 0L10 8.586l5.48-5.481a1 1 0 111.415 1.414L11.414 10l5.481 5.48a1 1 0 11-1.414 1.415L10 11.414l-5.48 5.481a1 1 0 11-1.415-1.414L8.586 10 3.105 4.52a1 1 0 010-1.414z"/></svg></button>
-                </form>
-            </div>
-        </div>
-
-        <div class="dock">
-            <button class="dock-item active" data-screen="home-screen"><svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg></button>
-            <button class="dock-item" data-screen="nav-screen"><svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l5.447 2.724A1 1 0 0021 16.382V5.618a1 1 0 00-1.447-.894L15 7m-6 10v-5.5m0 0l6-3m-6 3l-6-3" /></svg></button>
-            <button class="dock-item" data-screen="music-screen"><svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z" /></svg></button>
-            <button class="dock-item" data-screen="sport-screen"><svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg></button>
-            <button class="dock-item" data-screen="gemini-screen"><svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" /></svg></button>
         </div>
     </div>
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             // --- Element References ---
+            const infotainmentContainer = document.getElementById('infotainment-container');
+            const startupScreen = document.getElementById('startup-screen');
             const speedElement = document.getElementById('speed'), speedUnitElement = document.getElementById('speed-unit'),
-                  speedTileElement = document.getElementById('speed-tile'), speedUnitTileElement = document.getElementById('speed-unit-tile'),
                   distanceElement = document.getElementById('distance'), timeElement = document.getElementById('time'),
                   avgSpeedElement = document.getElementById('avgSpeed'), timeDisplayElement = document.getElementById('timeDisplay'),
                   temperatureElement = document.getElementById('temperature'), gpsStatusElement = document.getElementById('gpsStatus'),
                   dockItems = document.querySelectorAll('.dock-item'), screens = document.querySelectorAll('.screen'),
-                  widgetTiles = document.querySelectorAll('.widget-tile'), navSearchForm = document.getElementById('nav-search-form'),
+                  menuItems = document.querySelectorAll('.menu-item'), navSearchForm = document.getElementById('nav-search-form'),
                   navSearchInput = document.getElementById('nav-search-input'), chatForm = document.getElementById('chat-form'),
                   chatInput = document.getElementById('chat-input'), chatContainer = document.getElementById('chat-container'),
                   connectBtn = document.getElementById('connect-btn'), musicTrackTitle = document.getElementById('music-track-title'),
-                  musicTrackArtist = document.getElementById('music-track-artist'), albumArtLarge = document.getElementById('album-art-large'),
-                  musicTileTitle = document.getElementById('music-tile-title'), musicTileArtist = document.getElementById('music-tile-artist'),
-                  playPauseBtn = document.getElementById('play-pause-btn'), prevBtn = document.getElementById('prev-btn'), nextBtn = document.getElementById('next-btn');
+                  musicTrackArtist = document.getElementById('music-track-artist'), musicMenuArtist = document.getElementById('music-menu-artist'),
+                  playPauseBtn = document.getElementById('play-pause-btn'), prevBtn = document.getElementById('prev-btn'), nextBtn = document.getElementById('next-btn'),
+                  unitSelect = document.getElementById('unit-select'), timeFormatSelect = document.getElementById('time-format-select');
 
             // --- State & Settings ---
             let speed = 0, distance = 0, elapsedTime = 0, avgSpeed = 0, startTime = Date.now(), lastSpeedUpdateTime = Date.now(),
                 simulationInterval = null, chatHistory = [], routingControl = null, userLocation = null,
                 settings = { units: 'metric', timeFormat: '24h' },
-                mediaControlCharacteristic = null;
+                mediaControlCharacteristic = null, forecastChart = null, weatherMap = null;
 
             // --- Initialization ---
-            updateClock();
-            fetchWeather();
+            function startApp() {
+                startupScreen.classList.add('hidden');
+                showScreen('nav-screen'); // Default to nav screen
+                loadSettings();
+                updateClock();
+                setInterval(updateClock, 1000);
+                setInterval(updateDataDisplays, 1000);
+            }
+            setTimeout(startApp, 2000);
             
+            // --- Settings ---
+            function saveSettings() { localStorage.setItem('bikeId7Settings', JSON.stringify(settings)); }
+            function loadSettings() {
+                const saved = localStorage.getItem('bikeId7Settings');
+                if (saved) settings = JSON.parse(saved);
+                applySettings();
+            }
+            function applySettings() {
+                unitSelect.value = settings.units;
+                timeFormatSelect.value = settings.timeFormat;
+                updateDataDisplays();
+                updateClock();
+            }
+            unitSelect.addEventListener('change', () => { settings.units = unitSelect.value; saveSettings(); applySettings(); });
+            timeFormatSelect.addEventListener('change', () => { settings.timeFormat = timeFormatSelect.value; saveSettings(); applySettings(); });
+
             // --- UI Logic ---
             const screenMap = new Map();
             screens.forEach(screen => screenMap.set(screen.id, screen));
             function showScreen(screenId) {
+                infotainmentContainer.classList.toggle('app-view-active', screenId !== 'menu-screen');
                 screens.forEach(s => s.classList.remove('active'));
-                screenMap.get(screenId)?.classList.add('active');
+                const newScreen = screenMap.get(screenId);
+                if(newScreen) newScreen.classList.add('active');
+                
                 dockItems.forEach(item => item.classList.toggle('active', item.dataset.screen === screenId));
+                
                 if (screenId === 'nav-screen') setTimeout(() => map.invalidateSize(), 10);
+                if (screenId === 'weather-screen') {
+                    setTimeout(() => {
+                        if (weatherMap) weatherMap.invalidateSize();
+                        fetchAdvancedWeather();
+                    }, 10);
+                }
             }
             dockItems.forEach(item => item.addEventListener('click', () => showScreen(item.dataset.screen)));
-            widgetTiles.forEach(tile => tile.addEventListener('click', () => showScreen(tile.id.replace('-tile', '-screen'))));
-
-            // --- Web Bluetooth Logic ---
-            const MEDIA_SERVICE_UUID = '0000180d-0000-1000-8000-00805f9b34fb'; // Example: Heart Rate Service
-            const TRACK_CHAR_UUID = '00002a37-0000-1000-8000-00805f9b34fb'; // Example: Heart Rate Measurement
-            const CONTROL_CHAR_UUID = '00002a38-0000-1000-8000-00805f9b34fb'; // Example: Body Sensor Location
-
-            connectBtn.addEventListener('click', async () => {
-                if (!navigator.bluetooth) {
-                    alert('Web Bluetooth is not available on this browser. Please use a compatible browser like WebBLE on iOS.');
-                    return;
-                }
-                try {
-                    connectBtn.textContent = 'Connecting...';
-                    const device = await navigator.bluetooth.requestDevice({
-                        filters: [{ services: [MEDIA_SERVICE_UUID] }]
-                    });
-                    const server = await device.gatt.connect();
-                    const service = await server.getPrimaryService(MEDIA_SERVICE_UUID);
-                    
-                    const trackCharacteristic = await service.getCharacteristic(TRACK_CHAR_UUID);
-                    await trackCharacteristic.startNotifications();
-                    trackCharacteristic.addEventListener('characteristicvaluechanged', handleTrackChanged);
-
-                    mediaControlCharacteristic = await service.getCharacteristic(CONTROL_CHAR_UUID);
-                    
-                    connectBtn.textContent = 'Connected';
-                    connectBtn.style.backgroundColor = '#16a34a'; // Green
-                } catch (error) {
-                    console.error('Bluetooth connection failed:', error);
-                    connectBtn.textContent = 'Connection Failed';
-                    connectBtn.style.backgroundColor = '#dc2626'; // Red
-                }
-            });
-
-            function handleTrackChanged(event) {
-                const value = event.target.value;
-                const decoder = new TextDecoder('utf-8');
-                const [title, artist] = decoder.decode(value).split(';');
-                musicTrackTitle.textContent = title || 'Unknown Title';
-                musicTrackArtist.textContent = artist || 'Unknown Artist';
-                musicTileTitle.textContent = title || 'Unknown Title';
-                musicTileArtist.textContent = artist || 'Unknown Artist';
-            }
-
-            async function sendMediaCommand(command) {
-                if (!mediaControlCharacteristic) return;
-                const encoder = new TextEncoder();
-                await mediaControlCharacteristic.writeValue(encoder.encode(command));
-            }
-
-            playPauseBtn.addEventListener('click', () => sendMediaCommand('togglePlayPause'));
-            prevBtn.addEventListener('click', () => sendMediaCommand('prev'));
-            nextBtn.addEventListener('click', () => sendMediaCommand('next'));
+            menuItems.forEach(tile => tile.addEventListener('click', () => showScreen(tile.dataset.screen)));
 
             // --- Map & Navigation ---
             const map = L.map('map', { zoomControl: false, attributionControl: false }).setView([51.505, -0.09], 13);
-            const mapPreview = L.map('map-preview', { zoomControl: false, attributionControl: false, dragging: false, scrollWheelZoom: false }).setView([51.505, -0.09], 11);
             L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png', { maxZoom: 20, subdomains: 'abcd' }).addTo(map);
-            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png', { maxZoom: 20, subdomains: 'abcd' }).addTo(mapPreview);
-            let userMarker, userMarkerPreview;
+            let userMarker;
             navSearchForm.addEventListener('submit', (e) => { e.preventDefault(); if (navSearchInput.value && userLocation) geocodeAndRoute(navSearchInput.value); });
             function geocodeAndRoute(destination) {
-                const geocoder = L.Control.Geocoder.nominatim();
-                geocoder.geocode(destination, (results) => {
+                L.Control.Geocoder.nominatim().geocode(destination, (results) => {
                     if (results && results.length > 0) {
                         if (routingControl) map.removeControl(routingControl);
                         routingControl = L.Routing.control({
                             waypoints: [userLocation, results[0].center],
                             createMarker: () => null,
-                            lineOptions: { styles: [{color: getComputedStyle(document.documentElement).getPropertyValue('--bmw-blue').trim(), opacity: 0.8, weight: 6}] },
+                            lineOptions: { styles: [{color: getComputedStyle(document.documentElement).getPropertyValue('--id7-blue').trim(), opacity: 0.8, weight: 6}] },
                             router: L.Routing.osrmv1({ serviceUrl: `https://router.project-osrm.org/route/v1`, profile: 'bike' })
                         }).addTo(map);
                     } else { alert('Destination not found.'); }
@@ -343,19 +390,17 @@
             // --- Geolocation & Simulation ---
             function updateUserLocation(lat, lon) {
                 userLocation = L.latLng(lat, lon);
-                const iconHtml = `<div style="background-color: ${getComputedStyle(document.documentElement).getPropertyValue('--bmw-blue').trim()}; width: 20px; height: 20px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 10px black;"></div>`;
+                const iconHtml = `<div style="background-color: ${getComputedStyle(document.documentElement).getPropertyValue('--id7-blue').trim()}; width: 20px; height: 20px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 10px black;"></div>`;
                 const icon = L.divIcon({ className: 'bmw-location-marker', html: iconHtml, iconSize: [20, 20], iconAnchor: [10, 10] });
                 if (!userMarker) {
                     userMarker = L.marker([lat, lon], {icon: icon}).addTo(map);
-                    userMarkerPreview = L.marker([lat, lon], {icon: icon}).addTo(mapPreview);
                 } else {
                     userMarker.setLatLng([lat, lon]);
-                    userMarkerPreview.setLatLng([lat, lon]);
                 }
                 if (!routingControl) {
                     map.setView([lat, lon], 15);
-                    mapPreview.setView([lat, lon], 11);
                 }
+                fetchWeather();
             }
             if ('geolocation' in navigator) {
                 navigator.geolocation.watchPosition((position) => {
@@ -379,36 +424,119 @@
                 }, 2000);
             }
 
+            // --- Weather App Logic ---
+            function setupWeatherMap() {
+                if (weatherMap) return;
+                weatherMap = L.map('weather-map', { zoomControl: false, attributionControl: false }).setView([49.3486, 7.5806], 8);
+                L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', { maxZoom: 20, subdomains: 'abcd' }).addTo(weatherMap);
+            }
+
+            async function fetchAdvancedWeather() {
+                if (!userLocation) return;
+                const { lat, lng } = userLocation;
+                const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&hourly=temperature_2m,relativehumidity_2m,precipitation_probability,weathercode,windspeed_10m&current_weather=true`;
+
+                try {
+                    const response = await fetch(url);
+                    const data = await response.json();
+                    
+                    if (!data || !data.current_weather) throw new Error("Invalid weather data");
+
+                    document.getElementById('weather-temp').textContent = `${Math.round(data.current_weather.temperature)}°`;
+                    document.getElementById('weather-desc').textContent = getWeatherDescription(data.current_weather.weathercode);
+                    document.getElementById('weather-feels-like').textContent = `${Math.round(data.current_weather.temperature)}°`;
+                    document.getElementById('weather-wind').textContent = `${data.current_weather.windspeed.toFixed(1)} km/h`;
+                    document.getElementById('weather-humidity').textContent = `${data.hourly.relativehumidity_2m[0]}%`;
+                    
+                    const hourlyData = data.hourly;
+                    const labels = hourlyData.time.slice(0, 12).map(t => new Date(t).getHours() + ':00');
+                    const temps = hourlyData.temperature_2m.slice(0, 12);
+                    const rain = hourlyData.precipitation_probability.slice(0, 12);
+                    updateForecastChart(labels, temps, rain);
+
+                } catch (error) {
+                    console.error("Failed to fetch advanced weather:", error);
+                }
+            }
+
+            function getWeatherDescription(code) {
+                const descriptions = { 0: 'Clear sky', 1: 'Mainly clear', 2: 'Partly cloudy', 3: 'Overcast', 45: 'Fog', 48: 'Rime fog', 51: 'Light drizzle', 53: 'Drizzle', 55: 'Dense drizzle', 61: 'Slight rain', 63: 'Rain', 65: 'Heavy rain', 80: 'Rain showers', 81: 'Rain showers', 82: 'Violent showers' };
+                return descriptions[code] || 'Clear';
+            }
+
+            function updateForecastChart(labels, temps, rain) {
+                const ctx = document.getElementById('forecast-chart').getContext('2d');
+                if (forecastChart) forecastChart.destroy();
+                forecastChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            type: 'line', label: 'Temperature (°C)', data: temps,
+                            borderColor: 'rgb(239, 68, 68)', backgroundColor: 'rgba(239, 68, 68, 0.5)', yAxisID: 'y_temp',
+                        }, {
+                            type: 'bar', label: 'Chance of Rain (%)', data: rain,
+                            backgroundColor: 'rgba(59, 130, 246, 0.5)', yAxisID: 'y_rain',
+                        }]
+                    },
+                    options: {
+                        scales: {
+                            y_temp: { position: 'left', ticks: { color: 'white' } },
+                            y_rain: { position: 'right', max: 100, ticks: { color: 'white' } }
+                        },
+                        plugins: { legend: { labels: { color: 'white' } } }
+                    }
+                });
+            }
+
+
             // --- UI Update Functions ---
             function updateDataDisplays() {
-                const isImperial = settings.units === 'imperial', speedFactor = isImperial ? 0.621371 : 1, distFactor = isImperial ? 0.621371 : 1,
-                      speedUnitText = isImperial ? 'mph' : 'km/h', distUnitText = isImperial ? 'MI' : 'KM', currentSpeed = Math.floor(speed * speedFactor);
-                speedElement.textContent = currentSpeed; speedTileElement.textContent = currentSpeed;
-                speedUnitElement.textContent = speedUnitText; speedUnitTileElement.textContent = speedUnitText;
+                const isImperial = settings.units === 'imperial';
+                const speedFactor = isImperial ? 0.621371 : 1;
+                const distFactor = isImperial ? 0.621371 : 1;
+                const speedUnitText = isImperial ? 'mph' : 'km/h';
+                const distUnitText = isImperial ? 'MI' : 'KM';
+                const currentSpeed = Math.floor(speed * speedFactor);
+                
+                if (speedElement) speedElement.textContent = currentSpeed;
+                if (speedUnitElement) speedUnitElement.textContent = speedUnitText;
+                
                 distance += (speed / 3600) * ((Date.now() - lastSpeedUpdateTime) / 1000);
                 lastSpeedUpdateTime = Date.now();
-                distanceElement.textContent = (distance * distFactor).toFixed(1);
-                distanceElement.nextElementSibling.textContent = `DISTANCE (${distUnitText})`;
+                
+                if (distanceElement) {
+                    distanceElement.textContent = (distance * distFactor).toFixed(1);
+                    distanceElement.nextElementSibling.textContent = `DISTANCE (${distUnitText})`;
+                }
+                
                 elapsedTime = (Date.now() - startTime) / 1000;
-                const minutes = Math.floor((elapsedTime % 3600) / 60), seconds = Math.floor(elapsedTime % 60);
-                timeElement.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+                const minutes = Math.floor((elapsedTime % 3600) / 60);
+                const seconds = Math.floor(elapsedTime % 60);
+                
+                if (timeElement) timeElement.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+                
                 const avgSpeedKm = elapsedTime > 0 ? (distance / (elapsedTime / 3600)) : 0;
-                avgSpeedElement.textContent = (avgSpeedKm * speedFactor).toFixed(1);
-                avgSpeedElement.nextElementSibling.textContent = `AVG. SPEED (${speedUnitText.toUpperCase()})`;
+                if (avgSpeedElement) {
+                    avgSpeedElement.textContent = (avgSpeedKm * speedFactor).toFixed(1);
+                    avgSpeedElement.nextElementSibling.textContent = `AVG. SPEED (${speedUnitText.toUpperCase()})`;
+                }
             }
             function updateClock() {
                 const now = new Date();
-                timeDisplayElement.textContent = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: settings.timeFormat === '12h' });
+                const options = { hour: '2-digit', minute: '2-digit', hour12: settings.timeFormat === '12h' };
+                timeDisplayElement.textContent = now.toLocaleTimeString('en-US', options);
             }
             function fetchWeather() {
-                fetch(`https://api.open-meteo.com/v1/forecast?latitude=49.3486&longitude=7.5806&current_weather=true`)
-                    .then(res => res.json()).then(data => { temperatureElement.textContent = `${Math.round(data.current_weather.temperature)}°C`; }).catch(console.error);
+                if (!userLocation) return;
+                fetch(`https://api.open-meteo.com/v1/forecast?latitude=${userLocation.lat}&longitude=${userLocation.lng}&current_weather=true`)
+                    .then(res => res.json()).then(data => { 
+                        if (temperatureElement && data.current_weather) temperatureElement.textContent = `${Math.round(data.current_weather.temperature)}°C`; 
+                    }).catch(console.error);
             }
-
-            // --- Intervals ---
-            setInterval(updateClock, 1000);
-            setInterval(updateDataDisplays, 1000);
-            setInterval(fetchWeather, 600000);
+            
+            // Initial setup
+            setupWeatherMap();
         });
     </script>
 </body>
