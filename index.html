@@ -52,6 +52,7 @@
             flex-grow: 1;
             position: relative;
             height: 100%;
+            overflow: hidden;
         }
         .screen {
             position: absolute;
@@ -74,12 +75,15 @@
         }
         
         .dock {
-            display: flex;
+            display: none; /* Hidden by default */
             justify-content: space-around;
             background-color: #111;
             padding: 0.5rem 0;
             border-top: 1px solid #333;
             flex-shrink: 0;
+        }
+        .app-view-active .dock {
+            display: flex; /* Show dock when an app is active */
         }
         .dock-item {
             display: flex;
@@ -106,7 +110,7 @@
         }
         
         /* App-specific styles */
-        #nav-screen, #poi-screen, #weather-screen { padding: 0; }
+        #nav-screen, #poi-screen, #weather-screen, #youtube-screen { padding: 0; }
         #map, #poi-map, #weather-map { height: 100%; width: 100%; }
         .leaflet-routing-container { display: none; }
         .nav-search-bar { position: absolute; top: 1rem; left: 50%; transform: translateX(-50%); z-index: 999; width: 60%; }
@@ -158,6 +162,19 @@
         .menu-item .icon-bg { width: 80px; height: 80px; border-radius: 0.75rem; background-color: var(--mylink-dark-gray); display: flex; align-items: center; justify-content: center; margin-bottom: 0.5rem; transition: transform 0.2s; }
         .menu-item:hover .icon-bg { transform: scale(1.1); }
         .menu-item span { font-size: 0.8rem; font-weight: 500; }
+
+        /* Maintenance Screen */
+        #maintenance-list { display: flex; flex-direction: column; gap: 1rem; }
+        .maintenance-item { background-color: var(--mylink-dark-gray); border-radius: 0.75rem; padding: 1rem; }
+        .maintenance-item .progress-bar-bg { background-color: var(--mylink-med-gray); border-radius: 99px; height: 8px; overflow: hidden; }
+        .maintenance-item .progress-bar { height: 100%; border-radius: 99px; transition: width 0.5s, background-color 0.5s; }
+
+        /* YouTube Screen */
+        #youtube-screen { display: flex; flex-direction: column; }
+        #youtube-player-container { flex-grow: 1; background-color: #000; display: flex; align-items: center; justify-content: center; border-radius: 0.5rem; }
+        #youtube-player-container iframe { width: 100%; height: 100%; border: none; }
+        #youtube-form { display: flex; margin-top: 1rem; }
+        #youtube-url-input { flex-grow: 1; background-color: var(--mylink-dark-gray); border: 1px solid var(--mylink-med-gray); color: white; padding: 0.5rem 1rem; border-radius: 99px; }
     </style>
 </head>
 <body class="flex items-center justify-center">
@@ -258,6 +275,18 @@
                     </div>
                 </div>
              </div>
+             <div id="maintenance-screen" class="screen">
+                <h2 class="text-2xl font-bold mb-4">Maintenance Log</h2>
+                <div id="maintenance-list"></div>
+             </div>
+             <div id="youtube-screen" class="screen">
+                <form id="youtube-form" class="mb-4">
+                    <input type="text" id="youtube-url-input" placeholder="Paste YouTube URL..." class="flex-grow bg-gray-800 border-none rounded-full px-4 py-2 text-white">
+                </form>
+                <div id="youtube-player-container" class="flex-grow bg-black rounded-lg flex items-center justify-content: center;">
+                    <p class="text-gray-500">Paste a link to play a video</p>
+                </div>
+             </div>
         </div>
 
         <div class="dock">
@@ -268,6 +297,7 @@
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             // --- Element References ---
+            const infotainmentContainer = document.getElementById('infotainment-container');
             const startupScreen = document.getElementById('startup-screen');
             const dockContainer = document.querySelector('.dock');
             const screens = document.querySelectorAll('.screen');
@@ -275,12 +305,17 @@
             const navSearchInput = document.getElementById('nav-search-input');
             const contactList = document.getElementById('contact-list');
             const menuGrid = document.getElementById('menu-grid');
+            const maintenanceList = document.getElementById('maintenance-list');
+            const youtubeForm = document.getElementById('youtube-form');
+            const youtubeUrlInput = document.getElementById('youtube-url-input');
+            const youtubePlayerContainer = document.getElementById('youtube-player-container');
             
             // --- State ---
             let userLocation = null;
             let routingControl = null;
             let synth, confirmSynth;
             let map, weatherMap, forecastChart;
+            let totalDistance = 0;
 
             // --- App Data ---
             const appData = [
@@ -288,6 +323,8 @@
                 { id: 'music-screen', name: 'Media', icon: `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z" /></svg>`},
                 { id: 'comms-screen', name: 'Phone', icon: `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>`},
                 { id: 'weather-screen', name: 'Weather', icon: `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" /></svg>`},
+                { id: 'maintenance-screen', name: 'Maintenance', icon: `<svg class="w-8 h-8 icon text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899l4-4a4 4 0 005.656 0l4 4a4 4 0 000 5.656l-1.1 1.1m-2.828-2.828l-4.243 4.243"></path></svg>`},
+                { id: 'youtube-screen', name: 'YouTube', icon: `<svg fill="currentColor" viewBox="0 0 24 24"><path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0C.89 3.43.16 5.44.16 9.998c0 4.558.73 6.568 3.225 6.814 3.6.245 11.626.246 15.23 0 2.495-.246 3.225-2.256 3.225-6.814 0-4.558-.73-6.568-3.225-6.814zM9.935 14.59V5.408l6.155 4.59-6.155 4.592z"/></svg>`},
                 { id: 'gemini-screen', name: 'Gemini', icon: `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" /></svg>`},
                 { id: 'settings-screen', name: 'Settings', icon: `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>`}
             ];
@@ -300,6 +337,7 @@
                 showScreen('menu-screen');
                 initMaps();
                 renderContacts();
+                loadMaintenanceData();
             }
             setTimeout(startApp, 2000);
             
@@ -307,26 +345,11 @@
             document.body.addEventListener('click', async () => {
                 if (!synth) {
                     await Tone.start();
-                    synth = new Tone.NoiseSynth({
-                        noise: { type: 'pink' },
-                        envelope: { attack: 0.001, decay: 0.05, sustain: 0 }
-                    }).toDestination();
-                    confirmSynth = new Tone.FMSynth({
-                        harmonicity: 1.2,
-                        modulationIndex: 10,
-                        envelope: { attack: 0.001, decay: 0.2, sustain: 0.01, release: 0.1 },
-                        modulationEnvelope: { attack: 0.01, decay: 0.3, sustain: 0, release: 0.1 }
-                    }).toDestination();
+                    synth = new Tone.NoiseSynth({ noise: { type: 'pink' }, envelope: { attack: 0.001, decay: 0.05, sustain: 0 } }).toDestination();
+                    confirmSynth = new Tone.FMSynth({ harmonicity: 1.2, modulationIndex: 10, envelope: { attack: 0.001, decay: 0.2, sustain: 0.01, release: 0.1 }, modulationEnvelope: { attack: 0.01, decay: 0.3, sustain: 0, release: 0.1 } }).toDestination();
                 }
             }, { once: true });
-
-            function playSound(type) {
-                if (type === 'nav' && synth) {
-                    synth.triggerAttack();
-                } else if (type === 'confirm' && confirmSynth) {
-                    confirmSynth.triggerAttackRelease('C3', '8n');
-                }
-            }
+            function playSound(type) { if (type === 'nav' && synth) synth.triggerAttack(); else if (type === 'confirm' && confirmSynth) confirmSynth.triggerAttackRelease('C3', '8n'); }
 
             // --- UI Logic ---
             const screenMap = new Map();
@@ -334,6 +357,7 @@
             
             function showScreen(screenId) {
                 playSound(screenId === 'menu-screen' ? 'nav' : 'confirm');
+                infotainmentContainer.classList.toggle('app-view-active', screenId !== 'menu-screen');
                 screens.forEach(s => s.classList.remove('active'));
                 const newScreen = screenMap.get(screenId);
                 if(newScreen) newScreen.classList.add('active');
@@ -342,6 +366,7 @@
                 
                 if (screenId === 'nav-screen' && map) setTimeout(() => map.invalidateSize(), 10);
                 if (screenId === 'weather-screen' && weatherMap) setTimeout(() => weatherMap.invalidateSize(), 10);
+                if (screenId === 'maintenance-screen') updateMaintenanceLog();
             }
 
             function renderDock() {
@@ -385,33 +410,13 @@
                 
                 if ('geolocation' in navigator) {
                     navigator.geolocation.watchPosition(position => {
-                        const { latitude, longitude } = position.coords;
+                        const { latitude, longitude, speed } = position.coords;
                         userLocation = L.latLng(latitude, longitude);
+                        totalDistance += (speed || 0) * 3.6 / 3600; // Update total distance
                         if (!map.getPane('markerPane')) return;
                         if (!routingControl) map.setView(userLocation, 15);
                     });
                 }
-            }
-
-            navSearchForm.addEventListener('submit', (e) => {
-                e.preventDefault();
-                if (navSearchInput.value && userLocation) {
-                    geocodeAndRoute(navSearchInput.value);
-                }
-            });
-
-            function geocodeAndRoute(destination) {
-                L.Control.Geocoder.nominatim().geocode(destination, (results) => {
-                    if (results && results.length > 0) {
-                        if (routingControl) map.removeControl(routingControl);
-                        routingControl = L.Routing.control({
-                            waypoints: [userLocation, results[0].center],
-                            createMarker: () => null,
-                            lineOptions: { styles: [{color: 'var(--mylink-blue)', opacity: 0.8, weight: 6}] },
-                            router: L.Routing.osrmv1({ serviceUrl: `https://router.project-osrm.org/route/v1`, profile: 'bike' })
-                        }).addTo(map);
-                    } else { alert('Destination not found.'); }
-                });
             }
 
             // --- Comms App ---
@@ -434,6 +439,96 @@
                     `;
                     contactList.appendChild(item);
                 });
+            }
+
+            // --- Maintenance Log ---
+            let maintenanceData = {};
+            const maintenanceTasks = {
+                'lube-chain': { name: 'Lube Chain', interval: 250 },
+                'check-brakes': { name: 'Check Brakes', interval: 500 },
+                'tire-sealant': { name: 'Tire Sealant', interval: 1000 }
+            };
+
+            function loadMaintenanceData() {
+                const saved = localStorage.getItem('bikeMaintenance');
+                if (saved) {
+                    maintenanceData = JSON.parse(saved);
+                } else {
+                    // Initialize with defaults
+                    Object.keys(maintenanceTasks).forEach(key => {
+                        maintenanceData[key] = { lastReset: 0 };
+                    });
+                }
+                renderMaintenanceLog();
+            }
+
+            function saveMaintenanceData() {
+                localStorage.setItem('bikeMaintenance', JSON.stringify(maintenanceData));
+            }
+
+            function renderMaintenanceLog() {
+                maintenanceList.innerHTML = '';
+                Object.entries(maintenanceTasks).forEach(([key, task]) => {
+                    const item = document.createElement('div');
+                    item.className = 'maintenance-item';
+                    item.innerHTML = `
+                        <div class="flex justify-between items-center mb-2">
+                            <h3 class="text-lg font-semibold">${task.name}</h3>
+                            <button data-task="${key}" class="reset-btn bg-blue-600 text-xs px-3 py-1 rounded-full">Reset</button>
+                        </div>
+                        <div class="progress-bar-bg"><div id="progress-${key}" class="progress-bar"></div></div>
+                        <p id="status-${key}" class="text-xs text-gray-400 mt-1"></p>
+                    `;
+                    maintenanceList.appendChild(item);
+                });
+                document.querySelectorAll('.reset-btn').forEach(btn => btn.addEventListener('click', (e) => {
+                    const taskKey = e.target.dataset.task;
+                    maintenanceData[taskKey].lastReset = totalDistance;
+                    saveMaintenanceData();
+                    updateMaintenanceLog();
+                }));
+                updateMaintenanceLog();
+            }
+            
+            function updateMaintenanceLog() {
+                 Object.entries(maintenanceTasks).forEach(([key, task]) => {
+                    const data = maintenanceData[key];
+                    if (!data) return; // Fix for undefined data
+                    const ridden = totalDistance - data.lastReset;
+                    const remaining = Math.max(0, task.interval - ridden);
+                    const progress = Math.min(100, (ridden / task.interval) * 100);
+                    
+                    const progressBar = document.getElementById(`progress-${key}`);
+                    const statusText = document.getElementById(`status-${key}`);
+
+                    if(progressBar && statusText) {
+                        progressBar.style.width = `${progress}%`;
+                        if (progress > 90) progressBar.style.backgroundColor = 'var(--id7-red)';
+                        else if (progress > 70) progressBar.style.backgroundColor = '#f59e0b'; // amber-500
+                        else progressBar.style.backgroundColor = '#10b981'; // emerald-500
+                        
+                        statusText.textContent = `Due in ${remaining.toFixed(0)} km. (Interval: ${task.interval} km)`;
+                    }
+                });
+            }
+            setInterval(updateMaintenanceLog, 5000); // Update every 5 seconds
+
+            // --- YouTube App ---
+            youtubeForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const url = youtubeUrlInput.value;
+                const videoId = getYouTubeID(url);
+                if (videoId) {
+                    youtubePlayerContainer.innerHTML = `<iframe src="https://www.youtube.com/embed/${videoId}?autoplay=1" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
+                } else {
+                    youtubePlayerContainer.innerHTML = `<p class="text-red-500">Invalid YouTube URL</p>`;
+                }
+            });
+
+            function getYouTubeID(url) {
+                const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+                const match = url.match(regExp);
+                return (match && match[2].length === 11) ? match[2] : null;
             }
         });
     </script>
